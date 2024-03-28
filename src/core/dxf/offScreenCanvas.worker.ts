@@ -120,9 +120,7 @@ class ProxyManager {
 
 /** ---------------- worker主体  ------------------ **/
 const proxyManager = new ProxyManager();
-const middleObject:any = new Proxy({
-    isPreview: false
-}, {
+const middleObject:any = new Proxy({}, {
     set(target: {}, p: string | symbol, newValue: any): boolean {
         self.postMessage({
             type: 'middle',

@@ -84,7 +84,7 @@ class ElementProxy {
     readonly id: number;
     private worker: Worker;
     private element: HTMLElement;
-    
+
     constructor(element, worker, eventHandlers) {
         this.id = nextProxyId++;
         this.worker = worker;
@@ -164,6 +164,7 @@ export class Viewer {
 
         // 检查是否支持离屏canvas
         if (canvas.transferControlToOffscreen) {
+            console.log('OffscreenCanvas supported');
             // 创建Worker进行离屏渲染
             this.worker = new Worker(new URL('./offScreenCanvas.worker.ts', import.meta.url), {type: 'module'});
             const offscreen = canvas.transferControlToOffscreen();
@@ -264,6 +265,7 @@ export class Viewer {
 
     // 触发signal
     handleSignal(args){
+        console.log("handleSignal",args)
         const {type,name,data} = args;
         switch (type) {
             case "dispatch":

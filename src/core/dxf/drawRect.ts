@@ -52,6 +52,7 @@ export class DrawRect {
     private readonly dragControls: DragControls;
     private isDrag: boolean = false;
 
+    private tempModelUuid: string | undefined;
     private tempRect: THREE.Group | undefined;
     private downPoint: THREE.Vector2 = new THREE.Vector2();
 
@@ -79,7 +80,7 @@ export class DrawRect {
             this.controls && (this.controls.enabled = false);
 
             this.group.children.forEach((child, index) => {
-                if (child.userData.rect.elementId !== event.object.userData.rect.elementId) return;
+                if (child.userData.rect.modelUuid !== event.object.userData.rect.modelUuid) return;
 
                 this.middleObject.hoverRectIndex = index;
 
@@ -120,14 +121,14 @@ export class DrawRect {
             this.signal({
                 type: "dispatch",
                 name: "objectFocusByUuid",
-                data: [this.middleObject.selectRect.elementId]
+                data: [this.middleObject.selectRect.modelUuid]
             })
         });
         this.dragControls.addEventListener("drag", () => {
             render();
         });
         this.dragControls.addEventListener("dragend", (event) => {
-            if (!event.object || !event.object.userData.rect.id) return;
+            if (!event.object) return;
 
             const rectItem = event.object.userData.rect;
             rectItem.x += event.object.position.x;
@@ -135,7 +136,7 @@ export class DrawRect {
 
             this.signal({
                 type: "dispatch",
-                name: "drawingHotSpotDone",
+                name: "drawingMarkDone",
                 data: ["update", rectItem]
             })
         });
@@ -169,7 +170,7 @@ export class DrawRect {
     init() {
         // 若list长度不为0, 则显示已标记框
         if (this.middleObject.markList.length !== 0) {
-            this.middleObject.markList.forEach((item: ICad.IDrawRect) => {
+            this.middleObject.markList.forEach((item: IDrawingMark) => {
                 const rectObject = this.draw(item);
                 this.dragObjects.push(rectObject);
             });
@@ -187,39 +188,36 @@ export class DrawRect {
     }
 
     // 设置选中
-    setSelect({elementId}){
-        // elementId 为 undefined 或者有上一次选中时先去除选中
-        if(elementId === undefined || this.middleObject.selectRectIndex !== -1){
-            this.group.children[this.middleObject.selectRectIndex]?.children.forEach((c:any) => {
-                if(c.isLine){
-                    c.material = DrawRect.LineMaterial;
-                }
-            })
+    setSelect({modelUuid}){
+        // 先去除上一次选中
+        this.group.children[this.middleObject.selectRectIndex]?.children.forEach((c:any) => {
+            if(c.isLine){
+                c.material = DrawRect.LineMaterial;
+            }
+        })
+        this.middleObject.selectRectIndex = -1;
+        this.middleObject.selectRect = {};
 
-            this.middleObject.selectRectIndex = -1;
-            this.middleObject.selectRect = {};
-
-            if(elementId === undefined) return;
-        }
+        if(modelUuid === undefined) return;
 
         this.group.children.forEach((child, index) => {
-                if (child.userData.rect?.elementId !== elementId) return;
+            if (child.userData.rect?.modelUuid !== modelUuid) return;
 
-                this.middleObject.selectRectIndex = index;
-                this.middleObject.selectRect = child.userData.rect;
+            this.middleObject.selectRectIndex = index;
+            this.middleObject.selectRect = child.userData.rect;
 
-                child.children.forEach((c:any) => {
-                    if(c.isLine){
-                        c.material = DrawRect.HoverLineMaterial;
-                    }
-                })
-            });
+            child.children.forEach((c:any) => {
+                if(c.isLine){
+                    c.material = DrawRect.HoverLineMaterial;
+                }
+            })
+        });
     }
 
     // 还原rect
     restoreRect({rect}) {
         this.group.children.forEach((child, index) => {
-            if (child.userData.rect.elementId !== rect.elementId) return;
+            if (child.userData.rect.modelUuid !== rect.modelUuid) return;
 
             const re = JSON.parse(JSON.stringify(child.userData.rect));
 
@@ -227,16 +225,17 @@ export class DrawRect {
             this.group.remove(child);
 
             const rectObject = this.draw(re);
-            this.dragObjects.splice(this.dragObjects.findIndex(item => item.userData.rect.elementId === rect.elementId), 1, rectObject);
+            this.dragObjects.splice(this.dragObjects.findIndex(item => item.userData.rect.modelUuid === rect.modelUuid), 1, rectObject);
         })
     }
 
     /**
      * 准备开始画矩形标记框
      */
-    addRect() {
+    addRect({modelUuid}) {
         if (!this.controls) return;
 
+        this.tempModelUuid = modelUuid;
         this.controls.enabled = false;
         this.dragControls.enabled = false;
 
@@ -247,14 +246,14 @@ export class DrawRect {
     }
 
     // 删除当前选中的模型
-    deleteRect({elementId}){
+    deleteRect({modelUuid}){
         this.group.children.forEach((child, index) => {
-            if (child.userData.rect.elementId !== elementId) return;
+            if (child.userData.rect.modelUuid !== modelUuid) return;
 
             this.middleObject.markList.splice(index, 1);
             this.group.remove(child);
 
-            this.dragObjects.splice(this.dragObjects.findIndex(item => item.userData.rect.elementId === elementId), 1);
+            this.dragObjects.splice(this.dragObjects.findIndex(item => item.userData.rect.modelUuid === modelUuid), 1);
         })
     }
 
@@ -280,12 +279,12 @@ export class DrawRect {
 
         this.tempRect && this.group.remove(this.tempRect);
 
-        const item: ICad.IDrawRect = {
+        const item: IDrawingMark = {
             x: this.downPoint.x,
             y: this.downPoint.y,
             w: wp.x - this.downPoint.x,
             h: wp.y - this.downPoint.y,
-            name: "tempRect",
+            modelUuid: this.tempModelUuid
         };
 
         this.tempRect = this.draw(item);
@@ -297,23 +296,26 @@ export class DrawRect {
         if (this.isDrag) return;
 
         const wp = this.screenToScenePosition(event);
-        const item: ICad.IDrawRect = {
+        const item: IDrawingMark = {
             x: this.downPoint.x,
             y: this.downPoint.y,
             w: wp.x - this.downPoint.x,
             h: wp.y - this.downPoint.y,
-            name: "",
+            modelUuid: this.tempModelUuid
         };
+
+        this.drawDone(item)
 
         // 设置热点名称
         this.signal({
             type: "dispatch",
-            name: "drawingHotSpotSetName",
-            data: [item]
+            name: "drawingMarkDone",
+            data: ["add", item]
         })
 
         this.canvas.style.cursor = "default";
 
+        this.tempModelUuid = undefined;
         this.canvas.removeEventListener("pointermove", cpmFn);
         this.canvas.removeEventListener("pointerup", cpuFn);
     }
@@ -326,7 +328,7 @@ export class DrawRect {
     }
 
     // 名称设置完成后调用的绘制结束方法
-    drawDone({rect}) {
+    drawDone(rect:IDrawingMark) {
         this.tempRect && this.group.remove(this.tempRect);
 
         this.middleObject.markList.push(rect);
@@ -346,10 +348,10 @@ export class DrawRect {
     }
 
     // 绘制
-    draw(item: ICad.IDrawRect) {
+    draw(item: IDrawingMark) {
         /* 第二种方式 */
         const g = new THREE.Group();
-        g.name = "hot-spot-rect"
+        g.name = "mark-rect"
         const rectShape = new THREE.Shape();
         rectShape.moveTo(item.x, item.y);
         rectShape.lineTo(item.x + item.w, item.y);
@@ -370,9 +372,7 @@ export class DrawRect {
         line.position.copy(mesh.position)
         g.add(line)
 
-        if (item.id !== undefined) {
-            g.userData.rect = item;
-        }
+        g.userData.rect = item;
 
         this.group.add(g);
 
